@@ -28,8 +28,8 @@ double cost(double w, double b) {
     for (size_t i = 0; i < train_count; ++i) {
         double x = train[i][0];
         double y = predict(x, w, b);
-        double dw = y - train[i][1]; //prediction error
-        MSE += dw * dw;
+        double r = y - train[i][1]; //prediction error
+        MSE += r * r;
     }
     return MSE / train_count;
 }
