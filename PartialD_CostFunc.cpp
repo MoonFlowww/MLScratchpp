@@ -10,8 +10,8 @@ void gcost(double w1, double w2, double b, double *dw1, double *dw2, double *db)
         double z = train[i][2];
         double y = predict(x1, x2, w1, w2, b); // with sigmoid
         double di = 2 * (y - z) * y * (1 - y);
-        *dw1 += di * w1;
-        *dw2 += di * w2;
+        *dw1 += di * x1; // 1 weight per input
+        *dw2 += di * x2; // 2 input per neuron in this case
         *db += di;
             
 
