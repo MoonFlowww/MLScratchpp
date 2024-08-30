@@ -28,7 +28,7 @@ private:
     std::vector<int> hidden_layers;
     std::vector<Eigen::MatrixXd> weights;
     std::vector<Eigen::VectorXd> biases;
-    double learning_rate = 1;
+    double learning_rate = 1; // off
     int current_epoch = 0;
 
 public:
@@ -45,8 +45,21 @@ public:
         }
     }
 
-    Eigen::VectorXd sigmoid(const Eigen::VectorXd& z) {
-        return (1.0 / (1.0 + (-z.array()).exp())).matrix();
+    void PrintParms() {
+        std::cout << "\033[0mWeights: \n";
+        for (size_t i = 0; i < weights.size(); ++i) {
+            std::cout << "Layer " << i + 1 << " weights:\n" << weights[i] << "\n";
+        }
+
+        std::cout << "\nBiases: \n";
+        for (size_t i = 0; i < biases.size(); ++i) {
+            std::cout << "Layer " << i + 1 << " biases:\n" << biases[i] << "\n";
+        }
+    }
+
+    
+    Eigen::VectorXd sigmoid(const Eigen::VectorXd& x) {
+        return (1.0 / (1.0 + (-x.array()).exp())).matrix();
     }
 
     Eigen::VectorXd sigmoid_derivative(const Eigen::VectorXd& z) {
@@ -170,7 +183,7 @@ int main() {
     int k = 5;
     int total_epochs = 100000;
 
-    std::vector<int> hidden_layers = { 10, 7, 3 }; // Lh1 : 10 neurons, Lh2 : 7 neurons ...
+    std::vector<int> hidden_layers = { 10, 10 }; // Lh1 : 10 neurons, Lh2 : 7 neurons ...
 
     NN nn(1, hidden_layers, 1);
 
@@ -188,15 +201,29 @@ int main() {
 
     
     nn.train(X_train, Y_train, final_epochs, true);
-    
+    nn.PrintParms();
+    std::cout << "\n\n\n";
     std::cout << "\033[0m \n\n\nPredictions after final training:" << std::endl;
+    Eigen::VectorXd input(1);
+    Eigen::VectorXd y;
     for (int i = 0; i < train_count; ++i) {
-        Eigen::VectorXd input(1);
+        
         input << train[i][0] / 10.0;
 
-        Eigen::VectorXd y = nn.forward(input);
+        y = nn.forward(input);
         std::cout << "\033[33mx: " << train[i][0] << "\033[0m, \033[96my: " << y(0) * 100.0 << "\033[0m || \033[32mround(y): " << round(y(0) * 100.0) << "\033[0m, \033[91mError: " << (train[i][1] - y(0)* 100.0) <<"\033[0m" << std::endl;
     }
+    input << 13 / 10.0;
+    y = nn.forward(input);
+    std::cout << "\033[33mx: " << 13 << "\033[0m, \033[96my: " << y(0) * 100.0 << "\033[0m || \033[32mround(y): " << round(y(0) * 100.0) << "\033[0m, \033[91mError: " << (169 - y(0) * 100.0) << "\033[0m" << std::endl;
 
+
+    input << 100.0 / 10.0;
+    y = nn.forward(input);
+    std::cout << "\033[33mx: " << 100 << "\033[0m, \033[96my: " << y(0) * 100.0 << "\033[0m || \033[32mround(y): " << round(y(0) * 100.0) << "\033[0m, \033[91mError: " << (10000.0 - y(0) * 100.0) << "\033[0m" << std::endl;
     return 0;
 }
+
+
+
+
