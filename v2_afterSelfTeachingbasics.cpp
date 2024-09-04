@@ -70,7 +70,7 @@ public:
     Eigen::VectorXd forward(const Eigen::VectorXd& x) {
         Eigen::VectorXd activation = x;
         for (size_t i = 0; i < weights.size(); ++i) {
-            activation = (i == weights.size() - 1) ? sigmoid(weights[i] * activation + biases[i]) : sigmoid(weights[i] * activation + biases[i]);
+            activation = sigmoid(weights[i] * activation + biases[i]);
         }
         return activation;
     }
