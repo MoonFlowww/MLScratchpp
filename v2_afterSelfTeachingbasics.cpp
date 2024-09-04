@@ -28,7 +28,7 @@ private:
     std::vector<int> hidden_layers;
     std::vector<Eigen::MatrixXd> weights;
     std::vector<Eigen::VectorXd> biases;
-    double learning_rate = 1; // off
+    double learning_rate = 2; // off
     int current_epoch = 0;
 
 public:
