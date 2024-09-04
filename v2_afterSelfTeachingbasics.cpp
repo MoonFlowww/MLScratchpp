@@ -5,7 +5,6 @@
 #include <random>
 #include <cmath>
 
-// Squared data
 int train[][2] = {
     {0, 0}, 
     {1, 1}, 
@@ -16,50 +15,60 @@ int train[][2] = {
     {6, 36}, 
     {7, 49}, 
     {8, 64}, 
-    {9, 81}, 
-    {10, 100}
+    {9, 81},
+    { 10, 100 }
 };
 
-#define train_count (sizeof(train) / sizeof(train[0]))
+#define train_count (sizeof(train) / sizeof(train[0])) //nTuples
 
 class NN {
 private:
-    int n_input, n_output;
-    std::vector<int> hidden_layers;
-    std::vector<Eigen::MatrixXd> weights;
-    std::vector<Eigen::VectorXd> biases;
-    double learning_rate = 2; // off
-    int current_epoch = 0;
+    int nInput, nOutput; // num input/output
+    std::vector<int> initHlayer; // num neurons per H layers ( v.size() == num H Layers)
+    std::vector<Eigen::MatrixXd> weights; //1 matrix per layer (bcs x weight for y neurons)
+    std::vector<Eigen::VectorXd> biases; // 1 vector per layer (1 B for each neurons)
+
+    Eigen::VectorXd CurrLintput;// output previous layer. Should find a new name  . . .
+
+    std::vector<Eigen::VectorXd> PreAct; // before activation + hist all pred
+    std::vector<Eigen::VectorXd> Acted; // same but after activation function
+
+
+    double lr = 0.01;
+
+    int curr_e;
 
 public:
-    NN(int n_input, const std::vector<int>& hidden_layers, int n_output)
-        : n_input(n_input), n_output(n_output), hidden_layers(hidden_layers) {
+    NN(int n_input, const std::vector<int>& hidden_layers, int n_output) : nInput(n_input), initHlayer(hidden_layers), nOutput(n_output) {
+        std::vector<int> Arch = { nInput };
+        Arch.insert(Arch.end(), initHlayer.begin(), initHlayer.end());
+        Arch.push_back(nOutput);
 
-        std::vector<int> all_layers = { n_input };
-        all_layers.insert(all_layers.end(), hidden_layers.begin(), hidden_layers.end());
-        all_layers.push_back(n_output);
 
-        for (size_t i = 1; i < all_layers.size(); ++i) {
-            weights.push_back(Eigen::MatrixXd::Random(all_layers[i], all_layers[i - 1]) * std::sqrt(2.0 / all_layers[i - 1])); //  interesting approach
-            biases.push_back(Eigen::VectorXd::Zero(all_layers[i]));
+        weights.push_back(Eigen::MatrixXd::Random());
+
+        for (int i = 0; i < Arch.size(); ++i) {
+            weights.push_back(Eigen::MatrixXd::Random(Arch[i], Arch[-1])); // Init rand parms w
+            biases.push_back(Eigen::VectorXd::Zero(Arch[i])); // not rand bcs B is a corr of the exp comp due to the mult 
         }
+
     }
 
     void PrintParms() {
         std::cout << "\033[0mWeights: \n";
-        for (size_t i = 0; i < weights.size(); ++i) {
+        for (unsigned i = 0; i < weights.size(); ++i) {
             std::cout << "Layer " << i + 1 << " weights:\n" << weights[i] << "\n";
         }
 
         std::cout << "\nBiases: \n";
-        for (size_t i = 0; i < biases.size(); ++i) {
+        for (unsigned i = 0; i < biases.size(); ++i) {
             std::cout << "Layer " << i + 1 << " biases:\n" << biases[i] << "\n";
         }
     }
 
     
     Eigen::VectorXd sigmoid(const Eigen::VectorXd& x) {
-        return (1.0 / (1.0 + (-x.array()).exp())).matrix();
+        return (1 / (1 + (-x.array()).exp())).matrix();
     }
 
     Eigen::VectorXd sigmoid_derivative(const Eigen::VectorXd& z) {
@@ -67,116 +76,114 @@ public:
         return sigmoid_z.array() * (1 - sigmoid_z.array());
     }
 
-    Eigen::VectorXd forward(const Eigen::VectorXd& x) {
-        Eigen::VectorXd activation = x;
-        for (size_t i = 0; i < weights.size(); ++i) {
-            activation = sigmoid(weights[i] * activation + biases[i]);
+    void forward(const Eigen::VectorXd& x) { // should be type : Eigen::VectorXd (should do func rForward(){return v;})
+        CurrLintput = x; 
+        for (unsigned i = 0; i < weights.size(); ++i) {
+            CurrLintput = sigmoid(CurrLintput * weights[i] + biases[i]); // vector of input * weights[i] matrix of the current layer + biases current layer
         }
-        return activation;
     }
 
+    Eigen::VectorXd rForward(const Eigen::VectorXd& x) {
+        forward(x);
+        return CurrLintput;
+    }
+
+    
+
     void backpropagate(const Eigen::VectorXd& input, const Eigen::VectorXd& target) {
-        std::vector<Eigen::VectorXd> activations;
-        std::vector<Eigen::VectorXd> zs;
-        Eigen::VectorXd activation = input;
-        activations.push_back(activation);
+        forward(input);
 
-        // Forward
-        for (size_t i = 0; i < weights.size(); ++i) {
-            Eigen::VectorXd z = weights[i] * activation + biases[i];
-            zs.push_back(z);
-            activation = sigmoid(z);
-            activations.push_back(activation);
-        }
+        Eigen::VectorXd di = (Acted.back() - target) * sigmoid_derivative(PreAct.back()); // a bit blur in my mind (Sigm Derviate)
 
-        // Backward
-        Eigen::VectorXd delta = (activations.back() - target).array() * sigmoid_derivative(zs.back()).array();
-        for (int i = weights.size() - 1; i >= 0; --i) {
-            weights[i] -= learning_rate * (delta * activations[i].transpose());
-            biases[i] -= learning_rate * delta;
+        for (unsigned i = weights.size() - 1; i >= 0; --i) { // nLayer loops
 
-            if (i > 0) {
-                delta = (weights[i].transpose() * delta).array() * sigmoid_derivative(zs[i - 1]).array(); // (target - y)y(1-y) ->y(1-y) : sig
+            //update part
+            weights[i] -= lr * (di * Acted[i].transpose());
+            biases[i] -= lr * di;
+
+            if (i > 0) { // back prop part, to the previous layer
+                di = (weights[i].transpose() * di).array() * sigmoid_derivative(PreAct[i - 1]).array(); // 
             }
         }
     }
 
-    double cost(const Eigen::MatrixXd& X, const Eigen::MatrixXd& Y) {
-        double mse = 0.0;
-        for (int i = 0; i < X.cols(); ++i) {
-            Eigen::VectorXd y_pred = forward(X.col(i));
-            mse += (y_pred - Y.col(i)).squaredNorm();
+    double cost(const Eigen::MatrixXd& X, const Eigen::MatrixXd& Y_target) {
+        double MSE = 0;
+        for (unsigned i = 0; i < X.cols(); ++i) { // invert ordre compared to Train array
+            forward(X.col(i));
+            Eigen::VectorXd y_pred = CurrLintput; // forward is void in my case
+            MSE += (y_pred - Y_target.col(i)).squaredNorm(); // y -> E -> SE
         }
-        return mse / X.cols();
+        return MSE / X.cols(); // SE -> MSE
     }
 
     void train(const Eigen::MatrixXd& X, const Eigen::MatrixXd& Y, int epochs, bool verbose = false, int fold = -1) {
-        int initial_epoch = current_epoch;
-        for (int e = initial_epoch; e < initial_epoch + epochs; ++e) {
-            for (int i = 0; i < X.cols(); ++i) {
+        int initial_e = curr_e;
+        for (int e = initial_e; e < initial_e + epochs; ++e) {
+            for (int i = 0; X.cols(); ++i) {
                 backpropagate(X.col(i), Y.col(i));
             }
-            if (verbose && ((e + 1) % 500 == 0 || e == initial_epoch + epochs - 1)) {
+            if (verbose && ((e + 1) % 500 == 0 || e == initial_e + epochs - 1)) {
                 if (fold >= 0) {
                     std::cout << "Fold " << fold + 1 << ", ";
                 }
                 std::cout << "Epoch " << e + 1 << ", Cost: " << cost(X, Y) << std::endl;
             }
         }
-        current_epoch += epochs;
+        curr_e += epochs; // update if multi training type
     }
 
 
 };
 
-//k fold, completly useless in our case, overfitting is interesting in that type of cases which is not a dynamical env
-void rollingWindowCrossValidation(NN& nn, int k, int total_epochs) {
-    Eigen::MatrixXd X(1, train_count);
-    Eigen::MatrixXd Y(1, train_count);
-    for (int i = 0; i < train_count; ++i) {
-        X(0, i) = train[i][0] / 10.0;  // Normalize input
-        Y(0, i) = train[i][1] / 100.0; // the model don't really improve through epochs if i use the same divider. I don't understand why 
-    }
+//k fold
+void Kfold(NN& nn, int k, int Tepochs) {
+    Eigen::MatrixXd X(1, train_count); // intput
+    Eigen::MatrixXd Y(1, train_count); // target
 
+    for (size_t i = 0; i < train_count; ++i) {
+        X(0, i) = train[i][0] /10.0; // data + norm
+        Y(0, i) = train[i][1] /100.0; // last column
+    }
     Eigen::PermutationMatrix<Eigen::Dynamic, Eigen::Dynamic> perm(train_count);
     perm.setIdentity();
     std::random_shuffle(perm.indices().data(), perm.indices().data() + perm.indices().size());
-    X = X * perm;
-    Y = Y * perm;
+    X *= perm;
+    Y *= perm;
 
-    int fold_size = train_count / k;
-    int epochs_per_fold = std::ceil(static_cast<double>(total_epochs) / k); // no idea why that was strugguling here ^^
-    double total_cost = 0.0;
+    int f_size = train_count / k; //k : nfold
+    int f_epochs = std::ceil(Tepochs / k); // lower round
+    double Tcost = 0.0;
 
     for (int fold = 0; fold < k; ++fold) {
-        int test_start = fold * fold_size;
-        int test_end = (fold == k - 1) ? train_count : test_start + fold_size;
-        int test_size = test_end - test_start;
+        int f_start = fold * f_size;
+        int f_end = f_start + f_size;
 
-        Eigen::MatrixXd X_test = X.block(0, test_start, 1, test_size);
-        Eigen::MatrixXd Y_test = Y.block(0, test_start, 1, test_size);
+        Eigen::MatrixXd X_train = X.block(0, f_start, 1, f_size);
+        Eigen::MatrixXd Y_train = Y.block(0, f_start, 1, f_size);
 
-        Eigen::MatrixXd X_train(1, train_count - test_size);
-        Eigen::MatrixXd Y_train(1, train_count - test_size);
+        Eigen::MatrixXd X_test(1, train_count - f_size);
+        Eigen::MatrixXd Y_test(1, train_count - f_size);
 
         int train_idx = 0;
         for (int i = 0; i < train_count; ++i) {
-            if (i < test_start || i >= test_end) {
+            if (i < f_start || i >= f_end) { // driving through the data
                 X_train(0, train_idx) = X(0, i);
                 Y_train(0, train_idx) = Y(0, i);
-                train_idx++;
+                train_idx;
             }
         }
 
+
         std::cout << "\n\n\033[35mFold " << fold + 1 << " training:\033[0m" << std::endl;
-        nn.train(X_train, Y_train, epochs_per_fold, true, fold);
+        nn.train(X_train, Y_train, f_epochs, true, fold);
 
         double test_cost = nn.cost(X_test, Y_test);
         std::cout << "\033[35mFold " << fold + 1 << ", Test Cost: " << test_cost << "\033[0m" << std::endl;
-        total_cost += test_cost;
-    }
+        Tcost += test_cost;
 
-    std::cout << "Average Test Cost: " << total_cost / k << std::endl;
+    }
+    std::cout << "Average Test Cost: " << Tcost / k << std::endl;
 }
 
 int main() {
@@ -187,7 +194,7 @@ int main() {
 
     NN nn(1, hidden_layers, 1);
 
-    rollingWindowCrossValidation(nn, k, total_epochs);
+    Kfold(nn, k, total_epochs);
 
     Eigen::MatrixXd X_train(1, train_count);
     Eigen::MatrixXd Y_train(1, train_count);
@@ -199,7 +206,7 @@ int main() {
     int final_epochs = total_epochs * 0.5 / k;
     std::cout << "\n\n\n \033[36m-> Final training with the whole data, based on " << final_epochs << " epochs." << std::endl;
 
-    
+
     nn.train(X_train, Y_train, final_epochs, true);
     nn.PrintParms();
     std::cout << "\n\n\n";
@@ -207,23 +214,22 @@ int main() {
     Eigen::VectorXd input(1);
     Eigen::VectorXd y;
     for (int i = 0; i < train_count; ++i) {
-        
+
         input << train[i][0] / 10.0;
 
-        y = nn.forward(input);
-        std::cout << "\033[33mx: " << train[i][0] << "\033[0m, \033[96my: " << y(0) * 100.0 << "\033[0m || \033[32mround(y): " << round(y(0) * 100.0) << "\033[0m, \033[91mError: " << (train[i][1] - y(0)* 100.0) <<"\033[0m" << std::endl;
+        y = nn.rForward(input);
+        std::cout << "\033[33mx: " << train[i][0] << "\033[0m, \033[96my: " << y(0) * 100.0 << "\033[0m || \033[32mround(y): " << round(y(0) * 100.0) << "\033[0m, \033[91mError: " << (train[i][1] - y(0) * 100.0) << "\033[0m" << std::endl;
     }
     input << 13 / 10.0;
-    y = nn.forward(input);
+    y = nn.rForward(input);
     std::cout << "\033[33mx: " << 13 << "\033[0m, \033[96my: " << y(0) * 100.0 << "\033[0m || \033[32mround(y): " << round(y(0) * 100.0) << "\033[0m, \033[91mError: " << (169 - y(0) * 100.0) << "\033[0m" << std::endl;
 
 
     input << 100.0 / 10.0;
-    y = nn.forward(input);
+    y = nn.rForward(input);
     std::cout << "\033[33mx: " << 100 << "\033[0m, \033[96my: " << y(0) * 100.0 << "\033[0m || \033[32mround(y): " << round(y(0) * 100.0) << "\033[0m, \033[91mError: " << (10000.0 - y(0) * 100.0) << "\033[0m" << std::endl;
     return 0;
 }
-
 
 
 
