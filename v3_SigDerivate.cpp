@@ -24,30 +24,35 @@ private:
 
     Eigen::VectorXd CurrLintput;
 
+    // Activation function and its derivatives
     std::function<Eigen::VectorXd(const Eigen::VectorXd&)> Activ_F;
+    std::function<Eigen::VectorXd(const Eigen::VectorXd&)> Activ_F_Prime;
+    std::function<Eigen::VectorXd(const Eigen::VectorXd&)> Activ_F_c_Derivative;
+
     std::vector<Eigen::VectorXd> PreAct;
     std::vector<Eigen::VectorXd> Acted;
-    double lr = 0.1;
+    double lr = 0.1; // Learning rate for weights and biases
+    double lr_c = 0.1; // Learning rate for c
 
-    int ActParm;
-    double c;
+    double c; // activ parm
 
 public:
-    NN(int n_input, const std::vector<int>& hidden_layers, int n_output, int Parm)
-        : nInput(n_input), initHlayer(hidden_layers), nOutput(n_output), ActParm(Parm) {
-        std::srand(std::time(nullptr));
-        c = (static_cast<double>(std::rand()) / RAND_MAX) / 10.0;
+    NN(int n_input, const std::vector<int>& hidden_layers, int n_output, int parmActv)
+        : nInput(n_input), initHlayer(hidden_layers), nOutput(n_output) {
+        std::srand(static_cast<unsigned>(std::time(nullptr)));
+
+        c = 1.0;
 
         std::vector<int> Arch = { nInput };
         for (auto& x : hidden_layers) Arch.push_back(x);
         Arch.push_back(n_output);
 
         for (int i = 1; i < Arch.size(); ++i) {
-            weights.push_back(Eigen::MatrixXd::Random(Arch[i], Arch[i - 1]));
-            biases.push_back(Eigen::VectorXd::Random(Arch[i]));
+            weights.push_back(Eigen::MatrixXd::Random(Arch[i], Arch[i - 1]) * 0.1);
+            biases.push_back(Eigen::VectorXd::Random(Arch[i]) * 0.1);
         }
 
-        ActivFunc(ActParm);
+        ActivFunc(parmActv);
     }
 
 
@@ -60,69 +65,41 @@ public:
         for (size_t i = 0; i < biases.size(); ++i) {
             std::cout << "Layer " << i + 1 << " biases:\n" << biases[i] << "\n";
         }
+        std::cout << "\nc: " << c << std::endl;
     }
 
     Eigen::VectorXd sigmoid(const Eigen::VectorXd& x) {
-        return (1 / (1 + (-x.array()).exp())).matrix();
-    }
-
-    Eigen::VectorXd ReLu(const Eigen::VectorXd& x) {
-        return x.array().max(0).matrix();
-    }
-
-    Eigen::VectorXd Tanh(const Eigen::VectorXd& x) {
-        return x.array().tanh().matrix();
+        return (1.0 / (1.0 + (-c * x.array()).exp())).matrix();
     }
 
     Eigen::VectorXd Msigmoid(const Eigen::VectorXd& x) {
-        return (1 / (1 + (c * Eigen::VectorXd::Ones(x.size())).array().pow(-x.array()))).matrix();
+        Eigen::VectorXd sig = sigmoid(x);
+        return (sig.array() * (1.0 - sig.array()) * c).matrix();
     }
 
     Eigen::VectorXd PrimeMsig(const Eigen::VectorXd& x) {
-        Eigen::VectorXd exp_neg_x = (c * Eigen::VectorXd::Ones(x.size())).array().pow(-x.array());
-        Eigen::VectorXd one_plus_exp_neg_x = (1 + exp_neg_x.array()).matrix();
-        Eigen::VectorXd term = (one_plus_exp_neg_x.array().pow(2)).matrix();
-        return ((exp_neg_x.array() * std::log(c)) / term.array()).matrix();
+        Eigen::VectorXd sig = sigmoid(x);
+        return (sig.array() * (1.0 - sig.array()) * x.array()).matrix();
     }
-
-
-    Eigen::VectorXd DPrimeMsig(const Eigen::VectorXd& x) {
-        Eigen::VectorXd exp_neg_x = (c * Eigen::VectorXd::Ones(x.size())).array().pow(-x.array());
-        Eigen::VectorXd one_plus_exp_neg_x = (1 + exp_neg_x.array()).matrix();
-        Eigen::VectorXd term1 = (one_plus_exp_neg_x.array().pow(3)).matrix();
-        return ((-exp_neg_x.array() * std::log(c) * std::log(c)) / term1.array()).matrix();
-    }
-
-
-
-
-
 
     void ActivFunc(int parm) {
         switch (parm) {
-        default:
+        case 1:
             Activ_F = [this](const Eigen::VectorXd& x) { return sigmoid(x); };
             break;
-        case 1:
-            Activ_F = [this](const Eigen::VectorXd& x) { return ReLu(x); };
-            break;
         case 2:
-            Activ_F = [this](const Eigen::VectorXd& x) { return Tanh(x); };
-            break;
-        case 3:
             Activ_F = [this](const Eigen::VectorXd& x) { return Msigmoid(x); };
             break;
-        case 4:
+        case 3:
             Activ_F = [this](const Eigen::VectorXd& x) { return PrimeMsig(x); };
-            break;
-        case 5:
-            Activ_F = [this](const Eigen::VectorXd& x) { return DPrimeMsig(x); };
             break;
         }
     }
 
     void forward(const Eigen::VectorXd& x) {
         CurrLintput = x;
+        PreAct.clear();
+        Acted.clear();
 
         for (unsigned i = 0; i < weights.size(); ++i) {
             Eigen::VectorXd preAct = weights[i] * CurrLintput + biases[i];
@@ -132,9 +109,7 @@ public:
         }
     }
 
-
-
-    Eigen::VectorXd rForward(const Eigen::VectorXd& x) { // forward + return result outside of the class
+    Eigen::VectorXd rForward(const Eigen::VectorXd& x) {
         forward(x);
         return CurrLintput;
     }
@@ -142,30 +117,52 @@ public:
     void backpropagate(const Eigen::VectorXd& input, const Eigen::VectorXd& target) {
         forward(input);
 
+        std::vector<Eigen::VectorXd> deltas(weights.size());
+        std::vector<Eigen::VectorXd> dc_deltas(weights.size());
+
         Eigen::VectorXd output_error = Acted.back() - target;
-        Eigen::VectorXd di = output_error.array() * Activ_F(PreAct.back()).array();
+        Eigen::VectorXd delta = output_error.array() * Activ_F_Prime(PreAct.back()).array();
+        deltas.back() = delta;
 
-        for (int i = weights.size() - 1; i >= 0; --i) {
-            Eigen::MatrixXd weight_grad = di * Acted[i - 1].transpose();
-            Eigen::VectorXd bias_grad = di;
+        Eigen::VectorXd dc_delta = output_error.array() * Activ_F_c_Derivative(PreAct.back()).array();
+        dc_deltas.back() = dc_delta;
 
-            weights[i] -= lr * weight_grad;
-            biases[i] -= lr * bias_grad;
+        for (int i = weights.size() - 2; i >= 0; --i) {
+            delta = (weights[i + 1].transpose() * delta).array() * Activ_F_Prime(PreAct[i]).array();
+            deltas[i] = delta;
 
+
+            dc_delta = ((weights[i + 1].transpose() * dc_delta).array() * Activ_F_Prime(PreAct[i]).array())
+                + (deltas[i].array() * Activ_F_c_Derivative(PreAct[i]).array());
+            dc_deltas[i] = dc_delta;
         }
 
-        // error from "*"
-        Eigen::VectorXd grad_c = -output_error.array() * (Eigen::VectorXd::Ones(Acted.back().size()).array() 
-            / (1 + (c * Eigen::VectorXd::Ones(Acted.back().size()).array().pow(-Acted.back().array()))).array()).matrix(); 
-        c -= lr * grad_c.mean();
-    }
+        for (int i = weights.size() - 1; i >= 0; --i) {
+            Eigen::MatrixXd weight_grad;
+            if (i == 0)
+                weight_grad = deltas[i] * input.transpose();
+            else
+                weight_grad = deltas[i] * Acted[i - 1].transpose();
 
+            weights[i] -= lr * weight_grad;
+            biases[i] -= lr * deltas[i];
+        }
+
+        double grad_c = 0.0;
+        for (int i = 0; i < dc_deltas.size(); ++i) {
+            grad_c += dc_deltas[i].sum();
+        }
+        c -= lr_c * grad_c;
+
+        if (c < 0.01) c = 0.01; // Minimum value for c
+        if (c > 10.0) c = 10.0; // Maximum value for c
+    }
 
     double cost(const Eigen::MatrixXd& X, const Eigen::MatrixXd& Y_target) {
         double MSE = 0;
         for (int i = 0; i < X.cols(); ++i) {
             forward(X.col(i));
-            Eigen::VectorXd y_pred = CurrLintput; //this is the output of forward (func in void) 
+            Eigen::VectorXd y_pred = CurrLintput;
             MSE += (y_pred - Y_target.col(i)).squaredNorm();
         }
         return (MSE / X.cols());
@@ -177,14 +174,14 @@ public:
                 backpropagate(X.col(i), Y.col(i));
             }
             if (verbose && ((e + 1) % 500 == 0 || e == epochs - 1)) {
-                std::cout << "Epoch " << e + 1 << ", Cost: " << cost(X, Y) << std::endl;
+                std::cout << "Epoch " << e + 1 << ", Cost: " << cost(X, Y) << ", c: " << c << std::endl;
             }
         }
     }
 };
 
 int main() {
-    int total_epochs = 100000;
+    int total_epochs = 10000;
     std::vector<int> hidden_layers = { 10, 10 };
 
     NN nn(1, hidden_layers, 1, 3);
