@@ -1,3 +1,8 @@
+//neuron 1 : f(x)=xw+b
+//neuron 2 : f(x)=xw/b
+
+
+
 #include <iostream>
 #include <cstdlib>
 #include <time.h>
@@ -15,19 +20,23 @@ double train[][2] = {
 
 #define train_count (sizeof(train) / sizeof(train[0]))
 
-// Prediction using two neurons
-double predict(int x, double w1, double b1, double w2, double b2) {
-    // The output is the sum of both neurons' outputs
-    return x * w1 + b1 + x * w2 + b2;
+// Prediction using two layers
+double predict(double x, double w1, double b1, double w2, double b2) {
+    // Layer 1: f1(x) = xw1 + b1
+    double layer1_output = x * w1 + b1;
+    
+    // Layer 2: f2(x) = (f1(x) * w2) / b2
+    return (layer1_output * w2) / b2;
 }
 
+// Cost function
 double cost(double w1, double b1, double w2, double b2) {
     double MSE = 0.0;
 
     for (size_t i = 0; i < train_count; ++i) {
         double x = train[i][0];
         double y = predict(x, w1, b1, w2, b2);
-        double r = y - train[i][1]; 
+        double r = y - train[i][1];
         MSE += r * r;
     }
     return MSE / train_count;
@@ -45,7 +54,7 @@ void update(int epoch) {
     // Adam optimizer parameters
     double beta1 = 0.9;
     double beta2 = 0.999;
-    double eps = 1e-8;
+    double eps = 1e-5;
 
     // Adam optimizer moment estimates for all parameters
     double m_w1 = 0.0, v_w1 = 0.0;
@@ -69,14 +78,16 @@ void update(int epoch) {
         for (size_t i = 0; i < n; ++i) {
             double x = train[i][0];
             double y_true = train[i][1];
-            double y_pred = predict(x, w1, b1, w2, b2);
+            double layer1_output = x * w1 + b1;
+            double y_pred = (layer1_output * w2) / b2; // Two-layer prediction
             double error = y_pred - y_true;
 
-            // Compute gradients for both neurons
-            grad_w1 += (2.0 / n) * error * x;
-            grad_b1 += (2.0 / n) * error;
-            grad_w2 += (2.0 / n) * error * x;
-            grad_b2 += (2.0 / n) * error;
+            // Gradient calculations
+            grad_w2 += (2.0 / n) * error * layer1_output / b2;
+            grad_b2 -= (2.0 / n) * error * (layer1_output * w2) / (b2 * b2);
+
+            grad_w1 += (2.0 / n) * error * (x * w2) / b2;
+            grad_b1 += (2.0 / n) * error * (w2) / b2;
         }
 
         // Update biased first moment estimates
@@ -132,12 +143,14 @@ void update(int epoch) {
         b2 = backup_b2;
     }
     std::cout << "Final Parameters : w1->" << w1 << ", b1->" << b1 << ", w2->" << w2 << ", b2->" << b2 << std::endl;
+
+    // Test prediction
     int input = 42;
     double y_pred_bonus = predict(input, w1, b1, w2, b2);
     double target_bonus = 6.4807;
     std::cout << "Prediction: " << y_pred_bonus << std::endl;
-    std::cout << "Should be around " << target_bonus <<std::endl;
-    std::cout << "Error : " << (target_bonus-y_pred_bonus)/y_pred_bonus << std::endl;
+    std::cout << "Should be around " << target_bonus << std::endl;
+    std::cout << "Error : " << (target_bonus - y_pred_bonus) / y_pred_bonus << std::endl;
 }
 
 int main() {
